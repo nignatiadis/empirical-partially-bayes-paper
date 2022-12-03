@@ -34,9 +34,9 @@ proteomics_Ss =
     Empirikos.ScaledChiSquareSample.(abs2.(proteomics.se_hat), proteomics.residual_dof)
 proteomics_mu_hat = proteomics.mu_hat
 
-proteomics_npmle = npmle_limma_analysis(proteomics_Ss, proteomics_mu_hat)
-proteomics_limma = parametric_limma_analysis(proteomics_Ss, proteomics_mu_hat)
-proteomics_t = ttest_analysis(proteomics_Ss, proteomics_mu_hat)
+proteomics_npmle = fit(PartiallyBayesTest(prior=NPMLE), proteomics_Ss, proteomics_mu_hat)
+proteomics_limma = fit(PartiallyBayesTest(prior=Limma), proteomics_Ss, proteomics_mu_hat)
+proteomics_t = fit(SimultaneousTTest(), proteomics_Ss, proteomics_mu_hat)
 #---------------------------------------------------------
 # Panel A: Marginal density of variances
 #---------------------------------------------------------
@@ -149,25 +149,30 @@ twod_histogram_plot = histogram2d(
     xticks =( -5:1:1, string.(round.(exp.(-5:1:1);digits=3))),
 )
 
-limma_z_cutoffs_bh = invert_limma_pvalue.(proteomics_limma.cutoff, var_grid_refine_samples, Ref(proteomics_limma.prior))
-npmle_z_cutoffs_bh = invert_limma_pvalue.(proteomics_npmle.cutoff, var_grid_refine_samples, Ref(proteomics_npmle.prior))
-ttest_z_cutoffs_bh = invert_ttest_pvalue.(proteomics_t.cutoff, var_grid_refine_samples)
+
+extrema(response.(proteomics_Ss))
+threshold_grid_Ss = ScaledChiSquareSample.(0.0058:0.002:1.52, 28)
 
 
-limma_z_cutoffs_005 = invert_limma_pvalue.(0.05, var_grid_refine_samples, Ref(proteomics_limma.prior))
-npmle_z_cutoffs_005 = invert_limma_pvalue.(0.05, var_grid_refine_samples, Ref(proteomics_npmle.prior))
-ttest_z_cutoffs_005 = invert_ttest_pvalue.(0.05, var_grid_refine_samples)
+limma_z_cutoffs_bh = invert_limma_pvalue.(proteomics_limma.cutoff, threshold_grid_Ss, Ref(proteomics_limma.prior))
+npmle_z_cutoffs_bh = invert_limma_pvalue.(proteomics_npmle.cutoff, threshold_grid_Ss, Ref(proteomics_npmle.prior))
+ttest_z_cutoffs_bh = invert_ttest_pvalue.(proteomics_t.cutoff, threshold_grid_Ss)
+
+
+limma_z_cutoffs_005 = invert_limma_pvalue.(0.05, threshold_grid_Ss, Ref(proteomics_limma.prior))
+npmle_z_cutoffs_005 = invert_limma_pvalue.(0.05, threshold_grid_Ss, Ref(proteomics_npmle.prior))
+ttest_z_cutoffs_005 = invert_ttest_pvalue.(0.05, threshold_grid_Ss)
 
 cutoff_matrix = [npmle_z_cutoffs_bh limma_z_cutoffs_bh ttest_z_cutoffs_bh npmle_z_cutoffs_005  limma_z_cutoffs_005 ttest_z_cutoffs_005]
 cutoff_colors = [:purple :darkorange :grey :purple :darkorange :grey]
 cutoff_linestyles = [:solid :solid :solid :dash :dash :dash]
 
-plot!(twod_histogram_plot,  log.(var_grid_refine),cutoff_matrix,
+plot!(twod_histogram_plot,  log.(response.(threshold_grid_Ss)),cutoff_matrix,
     color = cutoff_colors,
     linestyle= cutoff_linestyles,
     label = ["NPMLE (BH)" "Limma (BH)" "t-test (BH)" "NPMLE (unadj.)" "Limma (unadj)" "t-test (unadj.)"])
 
-plot!(twod_histogram_plot,  log.(var_grid_refine), -cutoff_matrix,
+plot!(twod_histogram_plot, log.(response.(threshold_grid_Ss)), -cutoff_matrix,
     color = cutoff_colors,
     linestyle= cutoff_linestyles,
     label = "")
