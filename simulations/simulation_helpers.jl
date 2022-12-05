@@ -2,7 +2,7 @@ using Empirikos
 
 Base.@kwdef struct LimmaSimulation{D}
     prior::D
-    v0::Float64 = 9.0
+    v0::Float64 = 16.0
     ν::Int64 = 4
     n::Int64 = 10_000
     π1::Float64 = 0.1
@@ -24,7 +24,7 @@ function run_simulation(sim::LimmaSimulation)
     σs_squared = rand(prior, n)
 
     if adversarial_ordering
-        σs_squared = sort(σs_squared; rev=true)
+        σs_squared = sort(σs_squared; rev=false)
     end
 
     βs = fill(0.0, n)

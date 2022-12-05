@@ -13,6 +13,7 @@ Base.@kwdef struct PartiallyBayesTest
     α::Float64 = 0.05
     prior_grid = 300
     discretize_marginal = false
+    solver = Mosek.Optimizer
 end
 
 function fit(test::PartiallyBayesTest, Ss, mu_hat)
@@ -45,13 +46,14 @@ end
 function fit_prior(test::PartiallyBayesTest, prior::Type{NPMLE}, Ss)
     discretize_marginal = test.discretize_marginal
     prior_grid = test.prior_grid
+    solver = test.solver
 
     a_min = quantile(response.(Ss), 0.01)
     a_max = maximum(response.(Ss))
 
     grid = exp.(range(start=log(a_min), stop=log(a_max), length=prior_grid))
     _prior = DiscretePriorClass(grid)
-    _npmle = NPMLE(_prior, Mosek.Optimizer)
+    _npmle = NPMLE(_prior, solver)
 
     if discretize_marginal
         disc = interval_discretizer(grid)
