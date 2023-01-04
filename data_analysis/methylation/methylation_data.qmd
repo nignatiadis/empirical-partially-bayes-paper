@@ -1,0 +1,219 @@
+---
+title: "methylation"
+format: html
+---
+
+```{r}
+# the URL for the data download
+url <- "https://ndownloader.figshare.com/files/7896205"
+# download the data
+if(!file.exists("methylAnalysisDataV3.tar.gz")){
+    download.file(url, destfile="methylAnalysisDataV3.tar.gz", method="auto")
+}
+# extract the data
+if(!file.exists("./data")){
+    untar("methylAnalysisDataV3.tar.gz", exdir=".", compressed="gzip")
+}
+```
+
+```{r}
+# set up a path to the data directory
+dataDirectory <- "./data"
+# list the files
+list.files(dataDirectory, recursive=TRUE)
+```
+
+```{r}
+
+library(matrixStats)
+library(minfiData)
+library(DMRcate)
+library(stringr)
+```
+
+
+```{r}
+# load packages required for analysis
+library(limma)
+library(minfi)
+library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+library(IlluminaHumanMethylation450kmanifest)
+```
+```{r}
+ann450k = getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+head(ann450k)
+```
+
+```{r}
+# read in the sample sheet for the experiment
+targets <- read.metharray.sheet(dataDirectory, pattern="SampleSheet.csv")
+```
+
+
+```{r}
+rgSet <- read.metharray.exp(targets=targets)
+rgSet
+```
+
+```{r}
+targets$ID <- paste(targets$Sample_Group,targets$Sample_Name,sep=".")
+sampleNames(rgSet) <- targets$ID
+rgSet
+```
+
+```{r}
+# calculate the detection p-values
+detP <- detectionP(rgSet)
+head(detP)
+```
+
+
+
+```{r}
+# remove poor quality samples
+keep <- colMeans(detP) < 0.05
+rgSet <- rgSet[,keep]
+rgSet
+```
+
+```{r}
+targets <- targets[keep,]
+targets[,1:5]
+```
+```{r}
+# remove poor quality samples from detection p-value table
+detP <- detP[,keep]
+dim(detP)
+```
+
+```{r}
+mSetSq <- preprocessQuantile(rgSet)
+```
+
+```{r}
+mSetRaw <- preprocessRaw(rgSet)
+```
+
+```{r}
+detP <- detP[match(featureNames(mSetSq),rownames(detP)),]
+
+# remove any probes that have failed in one or more samples
+keep <- rowSums(detP < 0.01) == ncol(mSetSq)
+table(keep)
+```
+
+
+
+```{r}
+mSetSqFlt <- mSetSq[keep,]
+mSetSqFlt
+```
+```{r}
+# remove probes with SNPs at CpG site
+mSetSqFlt <- dropLociWithSnps(mSetSqFlt)
+mSetSqFlt
+```
+
+```{r}
+# exclude cross reactive probes
+xReactiveProbes <- read.csv(file=paste(dataDirectory,
+                               "48639-non-specific-probes-Illumina450k.csv",
+                               sep="/"), stringsAsFactors=FALSE)
+keep <- !(featureNames(mSetSqFlt) %in% xReactiveProbes$TargetID)
+table(keep)
+```
+
+```{r}
+mSetSqFlt <- mSetSqFlt[keep,]
+mSetSqFlt
+```
+
+```{r}
+mVals <- getM(mSetSqFlt)
+head(mVals[,1:5])
+```
+```{r}
+bVals <- getBeta(mSetSqFlt)
+head(bVals[,1:5])
+```
+
+```{r}
+# this is the factor of interest
+cellType <- factor(targets$Sample_Group)
+# this is the individual effect that we need to account for
+individual <- factor(targets$Sample_Source)
+
+# use the above to create a design matrix
+design <- model.matrix(~0+cellType+individual, data=targets)
+colnames(design) <- c(levels(cellType),levels(individual)[-1])
+design
+```
+```{r}
+fit <- lmFit(mVals, design)
+```
+```{r}
+contMatrix <- makeContrasts(naive-rTreg,
+                           naive-act_naive,
+                           rTreg-act_rTreg,
+                           act_naive-act_rTreg,
+                           levels=design)
+contMatrix
+```
+
+```{r}
+fit2 <- contrasts.fit(fit, contMatrix)
+fit2 <- eBayes(fit2)
+```
+
+```{r}
+summary(decideTests(fit2))
+```
+
+# Redo manually:
+
+```{r}
+naive_vs_rTreg <- "naive - rTreg"
+naive_vs_act <- "naive - act_naive"
+```
+
+```{r}
+my_df_naive_vs_rTreg <- data.frame(probe = rownames(fit2$coefficients),
+                 limma_pvalue = fit2$p.value[,naive_vs_rTreg],  
+                 sigma_hat = fit2$stdev.unscaled[,naive_vs_rTreg] * fit2$sigma, 
+                 mu_hat = fit2$coefficients[,naive_vs_rTreg])
+                 
+```
+
+```{r}
+fit2$df.residual[1]
+```
+
+```{r}
+fit2$df.prior
+```
+```{r}
+fit2$s2.prior * fit2$stdev.unscaled[1,]^2
+```
+```{r}
+library(readr)
+```
+```{r}
+write_csv(my_df_naive_vs_rTreg, file="methylation_naive_vs_rTreg.csv")
+```
+
+```{r}
+my_df_naive_vs_act <- data.frame(probe = rownames(fit2$coefficients),
+                 limma_pvalue = fit2$p.value[,naive_vs_act],  
+                 sigma_hat = fit2$stdev.unscaled[,naive_vs_act] * fit2$sigma, 
+                 mu_hat = fit2$coefficients[,naive_vs_act])
+                 
+```
+```{r}
+sum(p.adjust(my_df_naive_vs_act$limma_pvalue, method="BH") <= 0.05)
+```
+
+```{r}
+write_csv(my_df_naive_vs_act, file="methylation_naive_vs_act.csv")
+```
+
+
