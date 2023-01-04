@@ -3,9 +3,9 @@ using CSV
 using LaTeXStrings
 using Statistics
 using Plots
-using Test
 
-include("helpers.jl")
+dir = @__DIR__
+include(joinpath(dir, "..","..", "helpers.jl"))
 
 
 pgfplotsx()
@@ -20,7 +20,7 @@ theme(
     size = (420, 330),
 )
 
-methylation = CSV.File("methylation_naive_vs_act.csv")
+methylation = CSV.File(joinpath(dir, "methylation_naive_vs_act.csv"))
 
 # Code to be added to Empirikos.jl tests
 # limma_ν_prior = 3.957179
@@ -30,10 +30,22 @@ methylation_Ss =
     Empirikos.ScaledChiSquareSample.(abs2.(methylation.sigma_hat), 4)
 methylation_mu_hat = methylation.mu_hat
 
-methylation_npmle = fit(PartiallyBayesTest(prior=NPMLE, prior_grid=300, discretize_marginal=true),
+methylation_npmle = fit(PartiallyBayesTest(prior=NPMLE, discretize_marginal=true),
     methylation_Ss, methylation_mu_hat)
 methylation_limma = fit(PartiallyBayesTest(prior=Limma), methylation_Ss, methylation_mu_hat)
+methylation_limma.prior
+
 methylation_t = fit(SimultaneousTTest(), methylation_Ss, methylation_mu_hat)
+
+# rejections by method
+
+(methylation_npmle.total_rejections, methylation_limma.total_rejections, methylation_t.total_rejections)
+
+# Identify rejection that was only done by t-test
+t_test_idx = findfirst(methylation_t.rj_idx)
+methylation_Ss[t_test_idx]
+methylation_mu_hat[t_test_idx]
+
 #---------------------------------------------------------
 # Panel A: Marginal density of variances
 #---------------------------------------------------------
@@ -77,7 +89,7 @@ Plots.plot!(
 
 prior_plot = Plots.plot(
     support(methylation_npmle.prior),
-    50 * probs(methylation_npmle.prior),
+    100 * probs(methylation_npmle.prior),
     seriestype = :sticks,
     xlim = (0, 0.4),
     legend = :topright,
@@ -135,7 +147,7 @@ histogram!(
 extrema(log.(abs2.(methylation.sigma_hat)))
 
 
-log_grid = [0.0001; 0.001; 0.1; 1; 10]
+log_grid = [0.0001; 0.001; 0.01; 0.1; 1; 10]
 
 twod_histogram_plot = histogram2d(
     log.(abs2.(methylation.sigma_hat)),
@@ -144,7 +156,7 @@ twod_histogram_plot = histogram2d(
     c = cgrad(:algae, rev = false, scale = :exp),
     xlabel = L"S_i^2",
     ylabel = L"Z_i",
-    xticks = (log.(log_grid), string.(log_grid))),
+    xticks = (log.(log_grid), string.(log_grid)),
 )
 
 equidistant_grid = 0.0:0.001:1
@@ -154,7 +166,7 @@ threshold_grid_Ss = ScaledChiSquareSample.(quantile(response.(methylation_Ss), e
 
 limma_z_cutoffs_bh = invert_limma_pvalue.(methylation_limma.cutoff, threshold_grid_Ss, Ref(methylation_limma.prior))
 npmle_z_cutoffs_bh = invert_limma_pvalue.(methylation_npmle.cutoff, threshold_grid_Ss, Ref(methylation_npmle.prior))
-ttest_z_cutoffs_bh = invert_ttest_pvalue.(proteomics_t.cutoff, threshold_grid_Ss)
+ttest_z_cutoffs_bh = invert_ttest_pvalue.(methylation_t.cutoff, threshold_grid_Ss)
 
 
 limma_z_cutoffs_005 = invert_limma_pvalue.(0.05, threshold_grid_Ss, Ref(methylation_limma.prior))
@@ -186,7 +198,7 @@ Plots.plot(
     prior_plot,
     pvalue_hist,
     twod_histogram_plot,
-    size = (1200, 300),
+    size = (1400, 300),
     layout = (1, 4),
     title = ["a)" "b)" "c)" "d)"],
 )
