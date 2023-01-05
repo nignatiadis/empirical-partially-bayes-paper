@@ -20,56 +20,46 @@ theme(
     size = (420, 330),
 )
 
-methylation = CSV.File(joinpath(dir, "methylation_naive_vs_act.csv"))
+microarray = CSV.File(joinpath(dir, "microarray_ibrutinib.csv"))
 
 # Code to be added to Empirikos.jl tests
-# limma_ν_prior = 3.957179
-# limma_prior_var_naive_vs_act = 0.03664045646
+# limma_ν_prior = 10.42875
+# limma_prior_var_naive_vs_act = 0.007079249
 
-methylation_Ss =
-    Empirikos.ScaledChiSquareSample.(abs2.(methylation.sigma_hat), 4)
-methylation_mu_hat = methylation.mu_hat
+microarray_Ss =
+    Empirikos.ScaledChiSquareSample.(abs2.(microarray.se_hat), microarray.residual_dof)
+microarray_mu_hat = microarray.mu_hat
 
-methylation_npmle = fit(PartiallyBayesTest(prior=NPMLE, discretize_marginal=true),
-    methylation_Ss, methylation_mu_hat)
-methylation_limma = fit(PartiallyBayesTest(prior=Limma), methylation_Ss, methylation_mu_hat)
-methylation_limma.prior
+microarray_npmle = fit(PartiallyBayesTest(prior=NPMLE),
+    microarray_Ss, microarray_mu_hat)
+microarray_limma = fit(PartiallyBayesTest(prior=Limma), microarray_Ss, microarray_mu_hat)
+microarray_t = fit(SimultaneousTTest(), microarray_Ss, microarray_mu_hat)
 
-methylation_t = fit(SimultaneousTTest(), methylation_Ss, methylation_mu_hat)
+microarray_limma.prior
 
-# rejections by method
-
-(methylation_npmle.total_rejections, methylation_limma.total_rejections, methylation_t.total_rejections)
-
-# Identify rejection that was only done by t-test
-# and check that it is the one with 2nd smallest sample variance
-t_test_idx = findfirst(methylation_t.rj_idx)
-methylation_Ss[t_test_idx]
-methylation_mu_hat[t_test_idx]
-sort(response.(methylation_Ss))[1:2]
-
+(microarray_npmle.total_rejections, microarray_limma.total_rejections, microarray_t.total_rejections)
 #---------------------------------------------------------
 # Panel A: Marginal density of variances
 #---------------------------------------------------------
 
-extrema(support(methylation_npmle.prior))
+extrema(support(microarray_npmle.prior))
 
-var_grid_refine = 0.001:0.001:1.0
-var_grid_refine_samples = Empirikos.ScaledChiSquareSample.(var_grid_refine, 4)
+var_grid_refine = 0.0001:0.0001:0.05
+var_grid_refine_samples = Empirikos.ScaledChiSquareSample.(var_grid_refine, 11)
 
-marginal_pdf_limma = pdf.(methylation_limma.prior, var_grid_refine_samples)
-marginal_pdf_npmle = pdf.(methylation_npmle.prior, var_grid_refine_samples)
+marginal_pdf_limma = pdf.(microarray_limma.prior, var_grid_refine_samples)
+marginal_pdf_npmle = pdf.(microarray_npmle.prior, var_grid_refine_samples)
 
 histogram_plot = Plots.histogram(
-    abs2.(methylation.sigma_hat)[abs2.(methylation.sigma_hat).<0.4],
+    abs2.(microarray.se_hat)[abs2.(microarray.se_hat) .<0.1 ],
     fill = "lightgrey",
     normalize = true,
     fillalpha = 0.5,
     linewidth = 0.3,
     linealpha = 0.5,
     bins = 100,
-    xlim = (0, 0.4),
-    ylim = (0, 18),
+    xlim = (0, 0.05),
+    ylim = (0, 140),
     label = "Histogram",
     xlabel = L"S_i^2",
     ylabel = "Density",
@@ -90,10 +80,10 @@ Plots.plot!(
 #---------------------------------------------------------
 
 prior_plot = Plots.plot(
-    support(methylation_npmle.prior),
-    100 * probs(methylation_npmle.prior),
+    support(microarray_npmle.prior),
+    300 * probs(microarray_npmle.prior),
     seriestype = :sticks,
-    xlim = (0, 0.4),
+    xlim = (0, 0.05),
     legend = :topright,
     label = "NPMLE",
     color = :purple,
@@ -103,7 +93,7 @@ prior_plot = Plots.plot(
 
 Plots.plot!(
     prior_plot,
-    u -> pdf(methylation_limma.prior, u),
+    u -> pdf(microarray_limma.prior, u),
     label = "Limma",
     color = :darkorange,
 )
@@ -113,7 +103,7 @@ Plots.plot!(
 #---------------------------------------------------------
 
 pvalue_hist = histogram(
-    methylation_npmle.pvalue,
+    microarray_npmle.pvalue,
     fill = :blue,
     normalize = true,
     fillalpha = 0.2,
@@ -129,7 +119,7 @@ pvalue_hist = histogram(
 
 histogram!(
     pvalue_hist,
-    methylation_limma.pvalue,
+    microarray_limma.pvalue,
     fill = :darkorange,
     normalize = true,
     fillalpha = 0.2,
@@ -146,14 +136,14 @@ histogram!(
 # Panel D: 2D-rejection regions
 #---------------------------------------------------------
 
-extrema(log.(abs2.(methylation.sigma_hat)))
+extrema(log10.(abs2.(microarray.se_hat)))
 
 
-log_grid = [0.0001; 0.001; 0.01; 0.1; 1; 10]
+log_grid = [ 0.001; 0.01; 0.1]
 
 twod_histogram_plot = histogram2d(
-    log.(abs2.(methylation.sigma_hat)),
-    methylation_mu_hat,
+    log.(abs2.(microarray.se_hat)),
+    microarray_mu_hat,
     bins = 50,
     c = cgrad(:algae, rev = false, scale = :exp),
     xlabel = L"S_i^2",
@@ -161,18 +151,17 @@ twod_histogram_plot = histogram2d(
     xticks = (log.(log_grid), string.(log_grid)),
 )
 
-equidistant_grid = 0.0:0.001:1
-extrema(response.(methylation_Ss))
-threshold_grid_Ss = ScaledChiSquareSample.(quantile(response.(methylation_Ss), equidistant_grid), 4)
+equidistant_grid = 0.0:0.0002:1
+threshold_grid_Ss = ScaledChiSquareSample.(quantile(response.(microarray_Ss), equidistant_grid), 11)
 
 
-limma_z_cutoffs_bh = invert_limma_pvalue.(methylation_limma.cutoff, threshold_grid_Ss, Ref(methylation_limma.prior))
-npmle_z_cutoffs_bh = invert_limma_pvalue.(methylation_npmle.cutoff, threshold_grid_Ss, Ref(methylation_npmle.prior))
-ttest_z_cutoffs_bh = invert_ttest_pvalue.(methylation_t.cutoff, threshold_grid_Ss)
+limma_z_cutoffs_bh = invert_limma_pvalue.(microarray_limma.cutoff, threshold_grid_Ss, Ref(microarray_limma.prior))
+npmle_z_cutoffs_bh = invert_limma_pvalue.(microarray_npmle.cutoff, threshold_grid_Ss, Ref(microarray_npmle.prior))
+ttest_z_cutoffs_bh = invert_ttest_pvalue.(microarray_t.cutoff, threshold_grid_Ss)
 
 
-limma_z_cutoffs_005 = invert_limma_pvalue.(0.05, threshold_grid_Ss, Ref(methylation_limma.prior))
-npmle_z_cutoffs_005 = invert_limma_pvalue.(0.05, threshold_grid_Ss, Ref(methylation_npmle.prior))
+limma_z_cutoffs_005 = invert_limma_pvalue.(0.05, threshold_grid_Ss, Ref(microarray_limma.prior))
+npmle_z_cutoffs_005 = invert_limma_pvalue.(0.05, threshold_grid_Ss, Ref(microarray_npmle.prior))
 ttest_z_cutoffs_005 = invert_ttest_pvalue.(0.05, threshold_grid_Ss)
 
 cutoff_matrix = [npmle_z_cutoffs_bh limma_z_cutoffs_bh ttest_z_cutoffs_bh npmle_z_cutoffs_005  limma_z_cutoffs_005 ttest_z_cutoffs_005]
@@ -181,7 +170,7 @@ cutoff_linestyles = [:solid :solid :solid :dash :dash :dash]
 
 plot!(twod_histogram_plot,  log.(response.(threshold_grid_Ss)),cutoff_matrix,
     color = cutoff_colors,
-    ylim = (-6, 6),
+    ylim = (-2.2, 2.2),
     linestyle= cutoff_linestyles,
     label = ["NPMLE (BH)" "Limma (BH)" "t-test (BH)" "NPMLE (unadj.)" "Limma (unadj)" "t-test (unadj.)"])
 
@@ -205,4 +194,4 @@ Plots.plot(
     title = ["a)" "b)" "c)" "d)"],
 )
 
-savefig("methylation_plot.pdf")
+savefig("microarray_plot.pdf")
