@@ -3,9 +3,10 @@ using CSV
 using LaTeXStrings
 using Statistics
 using Plots
-using Test
 
-include("helpers.jl")
+dir = @__DIR__
+include(joinpath(dir, "..","..", "helpers.jl"))
+
 
 
 pgfplotsx()
@@ -21,7 +22,7 @@ theme(
 )
 
 
-proteomics = CSV.File("molecular_oncology_proteomics.csv")
+proteomics = CSV.File(joinpath(dir, "molecular_oncology_proteomics.csv"))
 
 # Code to be added to Empirikos.jl tests
 #limma_ν_prior = 5.174972897 limma_prior_var = 0.07665211404
@@ -37,6 +38,10 @@ proteomics_mu_hat = proteomics.mu_hat
 proteomics_npmle = fit(PartiallyBayesTest(prior=NPMLE), proteomics_Ss, proteomics_mu_hat)
 proteomics_limma = fit(PartiallyBayesTest(prior=Limma), proteomics_Ss, proteomics_mu_hat)
 proteomics_t = fit(SimultaneousTTest(), proteomics_Ss, proteomics_mu_hat)
+
+proteomics_limma.prior
+
+(proteomics_npmle.total_rejections, proteomics_limma.total_rejections, proteomics_t.total_rejections)
 #---------------------------------------------------------
 # Panel A: Marginal density of variances
 #---------------------------------------------------------
@@ -93,7 +98,7 @@ prior_plot = Plots.plot(
 Plots.plot!(
     prior_plot,
     u -> pdf(proteomics_limma.prior, u),
-    label = "Inverse Gamma",
+    label = "Limma",
     color = :darkorange,
 )
 
@@ -135,9 +140,9 @@ histogram!(
 # Panel D: 2D-rejection regions
 #---------------------------------------------------------
 
-extrema(log.(abs2.(proteomics.se_hat)))
+extrema(log10.(abs2.(proteomics.se_hat)))
 
-
+log_grid = [0.01; 0.1; 1.0]
 
 twod_histogram_plot = histogram2d(
     log.(abs2.(proteomics.se_hat)),
@@ -146,7 +151,8 @@ twod_histogram_plot = histogram2d(
     c = cgrad(:algae, rev = false, scale = :exp),
     xlabel = L"S_i^2",
     ylabel = L"Z_i",
-    xticks =( -5:1:1, string.(round.(exp.(-5:1:1);digits=3))),
+    ylim = (-3.4, 3.4),
+    xticks =(log.(log_grid), string.(log_grid))
 )
 
 
@@ -187,7 +193,7 @@ Plots.plot(
     prior_plot,
     pvalue_hist,
     twod_histogram_plot,
-    size = (1200, 300),
+    size = (1400, 300),
     layout = (1, 4),
     title = ["a)" "b)" "c)" "d)"],
 )
