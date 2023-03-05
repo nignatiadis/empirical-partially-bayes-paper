@@ -98,42 +98,9 @@ Plots.plot!(
     color = :darkorange,
 )
 
-#---------------------------------------------------------
-# Panel C: Prior
-#---------------------------------------------------------
-
-pvalue_hist = histogram(
-    microarray_npmle.pvalue,
-    fill = :blue,
-    normalize = true,
-    fillalpha = 0.2,
-    linewidth = 0.3,
-    bins = 20,
-    xlim = (0, 1),
-    ylim = (0, 3.4),
-    label = "NPMLE",
-    xlabel = L"P_i",
-    ylabel = "Density",
-    legend = :topright,
-)
-
-histogram!(
-    pvalue_hist,
-    microarray_limma.pvalue,
-    fill = :darkorange,
-    normalize = true,
-    fillalpha = 0.2,
-    linewidth = 0.3,
-    bins = 20,
-    xlim = (0, 1),
-    label = "Limma",
-    xlabel = L"P_i",
-    ylabel = "Density",
-    legend = :topright,
-)
 
 #---------------------------------------------------------
-# Panel D: 2D-rejection regions
+# Panel C: 2D-rejection regions
 #---------------------------------------------------------
 
 extrema(log10.(abs2.(microarray.se_hat)))
@@ -184,14 +151,18 @@ plot!(twod_histogram_plot, log.(response.(threshold_grid_Ss)), -cutoff_matrix,
 #---------------------------------------------------------
 
 
+
 Plots.plot(
     histogram_plot,
     prior_plot,
-    pvalue_hist,
+    size = (800, 300),
+    layout = (1,2))
+
+savefig("first_two_microarray_panels.pdf")
+
+Plots.plot(
     twod_histogram_plot,
-    size = (1400, 300),
-    layout = (1, 4),
-    title = ["a)" "b)" "c)" "d)"],
+    size = (400, 300),
 )
 
-savefig("microarray_plot.pdf")
+savefig("microarray_rejection_regions.pdf")

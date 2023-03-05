@@ -37,9 +37,12 @@ methylation_limma.prior
 
 methylation_t = fit(SimultaneousTTest(), methylation_Ss, methylation_mu_hat)
 
+
+
 # rejections by method
 
 (methylation_npmle.total_rejections, methylation_limma.total_rejections, methylation_t.total_rejections)
+(methylation_npmle.cutoff, methylation_limma.cutoff, methylation_t.cutoff)
 
 # Identify rejection that was only done by t-test
 # and check that it is the one with 2nd smallest sample variance
@@ -108,42 +111,10 @@ Plots.plot!(
     color = :darkorange,
 )
 
-#---------------------------------------------------------
-# Panel C: Prior
-#---------------------------------------------------------
 
-pvalue_hist = histogram(
-    methylation_npmle.pvalue,
-    fill = :blue,
-    normalize = true,
-    fillalpha = 0.2,
-    linewidth = 0.3,
-    bins = 20,
-    xlim = (0, 1),
-    ylim = (0, 3.4),
-    label = "NPMLE",
-    xlabel = L"P_i",
-    ylabel = "Density",
-    legend = :topright,
-)
-
-histogram!(
-    pvalue_hist,
-    methylation_limma.pvalue,
-    fill = :darkorange,
-    normalize = true,
-    fillalpha = 0.2,
-    linewidth = 0.3,
-    bins = 20,
-    xlim = (0, 1),
-    label = "Limma",
-    xlabel = L"P_i",
-    ylabel = "Density",
-    legend = :topright,
-)
 
 #---------------------------------------------------------
-# Panel D: 2D-rejection regions
+# Panel C: 2D-rejection regions
 #---------------------------------------------------------
 
 extrema(log.(abs2.(methylation.sigma_hat)))
@@ -198,11 +169,78 @@ plot!(twod_histogram_plot, log.(response.(threshold_grid_Ss)), -cutoff_matrix,
 Plots.plot(
     histogram_plot,
     prior_plot,
-    pvalue_hist,
-    twod_histogram_plot,
-    size = (1400, 300),
-    layout = (1, 4),
-    title = ["a)" "b)" "c)" "d)"],
+    size = (800, 300),
+    layout = (1,2)
 )
 
-savefig("methylation_plot.pdf")
+savefig("first_two_methylation_panels.pdf")
+
+Plots.plot(
+    twod_histogram_plot,
+    size = (400, 300),
+)
+
+savefig("methylation_rejection_regions.pdf")
+
+# Stratified p-value histograms
+
+
+ten_percent_quantile_low = quantile(response.(methylation_Ss), 0.10)
+ten_percent_quantile_high = quantile(response.(methylation_Ss), 0.90)
+
+keep_idx_low = response.(methylation_Ss) .<= ten_percent_quantile
+keep_idx_high = response.(methylation_Ss) .>= ten_percent_quantile_high
+keep_idx_all = fill(true, length(keep_idx_low))
+
+hist_params = (
+normalize = true,
+fillalpha = 0.2,
+linewidth = 0.3,
+bins = 20,
+xlim = (0, 1),
+ylim = (0.001,7),
+xlabel = L"P_i",
+ylabel = "Density",
+legend = :topright,
+titlefontsize=10
+)
+
+
+ttest_histograms = plot(
+    histogram(methylation_t.pvalue[keep_idx_all];
+        fillcolor=:grey,
+        title = L"\textrm{ all }\, S_i^2",
+        label = "t-test",
+        hist_params...),
+    histogram(methylation_t.pvalue[keep_idx_low];
+        fillcolor=:grey,
+        title = L"S_i^2\, \textrm{ in  bottom }\, 10\%",
+        label = "t-test",
+        hist_params...),
+    histogram(methylation_t.pvalue[keep_idx_high];
+        fillcolor=:grey,
+        title = L"S_i^2\, \textrm{ in  top }\, 10\%",
+        label = "t-test",
+        hist_params...),
+    histogram(methylation_npmle.pvalue[keep_idx_all];
+        fillcolor=:purple,
+        title = L"\textrm{ all }\, S_i^2",
+        label = "NPMLE",
+        hist_params...),
+    histogram(methylation_npmle.pvalue[keep_idx_low];
+        fillcolor=:purple,
+        title = L"S_i^2\, \textrm{ in  bottom }\, 10\%",
+        label = "NPMLE",
+        hist_params...),
+    histogram(methylation_npmle.pvalue[keep_idx_high];
+        fillcolor=:purple,
+        title = L"S_i^2\, \textrm{ in  top }\, 10\%",
+        label = "NPMLE",
+        hist_params...),
+    bottom_margin = 9*Plots.mm,
+    layout = (2,3),
+    size = (1000, 500),
+    thickness_scaling=1.6
+)
+
+savefig("methylation_conditional_pvalue_histograms.pdf")

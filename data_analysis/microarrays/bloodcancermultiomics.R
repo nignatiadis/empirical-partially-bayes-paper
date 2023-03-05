@@ -1,4 +1,5 @@
 library("BloodCancerMultiOmics2017")
+library("Biobase")
 
 data("exprTreat", "drugs")
 e <- exprTreat
