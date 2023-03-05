@@ -19,12 +19,9 @@ theme(
 )
 
 
+dir = @__DIR__
 
-
-method_res1 = load("simulations/method_res_x.jld2", "method_res")
-method_res2 = load("simulations/method_res_twopoint.jld2", "method_res")
-
-method_res = vcat(method_res1, method_res2)
+method_res = load(joinpath(dir, "method_res_3k.jld2"), "method_res")
 
 summary_tbl =
     method_res |>
@@ -149,7 +146,7 @@ inversegamma_nonadv_power = @df inversegamma_nonadv groupedbar(
 
 
 twopoint_nonadv = filter(
-    row -> (row.simulation_setting == :TwoPointPrior3) & !row.adversarial_ordering,
+    row -> (row.simulation_setting == :TwoPointPrior) & !row.adversarial_ordering,
     summary_tbl,
 )
 
@@ -250,7 +247,7 @@ inversegamma_adv_power = @df inversegamma_adv groupedbar(
 
 
 twopoint_adv = filter(
-    row -> (row.simulation_setting == :TwoPointPrior3) & row.adversarial_ordering,
+    row -> (row.simulation_setting == :TwoPointPrior) & row.adversarial_ordering,
     summary_tbl,
 )
 
