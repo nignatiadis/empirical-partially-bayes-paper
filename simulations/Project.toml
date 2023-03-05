@@ -1,0 +1,10 @@
+[deps]
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Empirikos = "cab608d6-c565-4ea1-96d6-ce5441ba21b0"
+JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
+MosekTools = "1ec41992-ff65-5c91-ac43-2df89e9693a4"
+MultipleTesting = "f8716d33-7c4a-5097-896f-ce0ecbd3ef6b"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+RangeHelpers = "3a07dd3d-1c52-4395-8858-40c6328157db"
+Roots = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"

@@ -9,17 +9,16 @@ using Random
 using JLD2
 Random.seed!(1)
 
-νs = [2; 4; 8; 16; 32; 64; 128]
+νs = [2; 4; 8; 16; 32; 64]
 
 settings = (
     Dirac = Dirac(1.0),
     InverseGamma = Empirikos.InverseScaledChiSquare(1.0, 6.0),
-    TwoPointPrior = DiscreteNonParametric([1.0; 0.5], [0.9; 0.1]),
-    TwoPointPriorSeparated = DiscreteNonParametric([10.0; 1.0], [0.9; 0.1]),
+    TwoPointPrior = DiscreteNonParametric([10.0; 1.0], [0.5; 0.5])
 )
 
 
-nreps = 2
+nreps = 3000
 
 
 method_res = DataFrame(
@@ -87,4 +86,4 @@ for adversarial_ordering in [false; true]
     end
 end
 
-jldsave("method_res_x.jld2"; method_res=method_res)
+jldsave("method_res_3k.jld2"; method_res=method_res)
