@@ -3,9 +3,10 @@ using CSV
 using LaTeXStrings
 using Statistics
 using Plots
+using MosekTools    
 
 dir = @__DIR__
-include(joinpath(dir, "..","..", "helpers.jl"))
+include(joinpath(dir, "..", "..", "helpers.jl"))
 
 
 pgfplotsx()
@@ -30,14 +31,23 @@ microarray_Ss =
     Empirikos.ScaledChiSquareSample.(abs2.(microarray.se_hat), microarray.residual_dof)
 microarray_mu_hat = microarray.mu_hat
 
-microarray_npmle = fit(PartiallyBayesTest(prior=NPMLE),
-    microarray_Ss, microarray_mu_hat)
-microarray_limma = fit(PartiallyBayesTest(prior=Limma), microarray_Ss, microarray_mu_hat)
-microarray_t = fit(SimultaneousTTest(), microarray_Ss, microarray_mu_hat)
+microarray_samples = NormalChiSquareSample.(microarray.mu_hat, microarray_Ss)
+
+eb_ttest_npmle = Empirikos.EmpiricalPartiallyBayesTTest(;solver=Mosek.Optimizer)
+eb_ttest_limma = Empirikos.EmpiricalPartiallyBayesTTest(;prior=Empirikos.Limma())
+
+microarray_npmle = fit(eb_ttest_npmle, microarray_samples)
+
+microarray_limma = fit(eb_ttest_limma, microarray_samples)
+microarray_t = fit(SimultaneousTTest(), microarray_samples)
 
 microarray_limma.prior
 
-(microarray_npmle.total_rejections, microarray_limma.total_rejections, microarray_t.total_rejections)
+(
+    microarray_npmle.total_rejections,
+    microarray_limma.total_rejections,
+    microarray_t.total_rejections,
+)
 #---------------------------------------------------------
 # Panel A: Marginal density of variances
 #---------------------------------------------------------
@@ -51,7 +61,7 @@ marginal_pdf_limma = pdf.(microarray_limma.prior, var_grid_refine_samples)
 marginal_pdf_npmle = pdf.(microarray_npmle.prior, var_grid_refine_samples)
 
 histogram_plot = Plots.histogram(
-    abs2.(microarray.se_hat)[abs2.(microarray.se_hat) .<0.1 ],
+    abs2.(microarray.se_hat)[abs2.(microarray.se_hat).<0.1],
     fill = "lightgrey",
     normalize = true,
     fillalpha = 0.5,
@@ -106,7 +116,7 @@ Plots.plot!(
 extrema(log10.(abs2.(microarray.se_hat)))
 
 
-log_grid = [ 0.001; 0.01; 0.1]
+log_grid = [0.001; 0.01; 0.1]
 
 twod_histogram_plot = histogram2d(
     log.(abs2.(microarray.se_hat)),
@@ -119,32 +129,54 @@ twod_histogram_plot = histogram2d(
 )
 
 equidistant_grid = 0.0:0.0002:1
-threshold_grid_Ss = ScaledChiSquareSample.(quantile(response.(microarray_Ss), equidistant_grid), 11)
+threshold_grid_Ss =
+    ScaledChiSquareSample.(quantile(response.(microarray_Ss), equidistant_grid), 11)
 
 
-limma_z_cutoffs_bh = invert_limma_pvalue.(microarray_limma.cutoff, threshold_grid_Ss, Ref(microarray_limma.prior))
-npmle_z_cutoffs_bh = invert_limma_pvalue.(microarray_npmle.cutoff, threshold_grid_Ss, Ref(microarray_npmle.prior))
+limma_z_cutoffs_bh =
+    invert_limma_pvalue.(
+        microarray_limma.cutoff,
+        threshold_grid_Ss,
+        Ref(microarray_limma.prior),
+    )
+npmle_z_cutoffs_bh =
+    invert_limma_pvalue.(
+        microarray_npmle.cutoff,
+        threshold_grid_Ss,
+        Ref(microarray_npmle.prior),
+    )
 ttest_z_cutoffs_bh = invert_ttest_pvalue.(microarray_t.cutoff, threshold_grid_Ss)
 
 
-limma_z_cutoffs_005 = invert_limma_pvalue.(0.05, threshold_grid_Ss, Ref(microarray_limma.prior))
-npmle_z_cutoffs_005 = invert_limma_pvalue.(0.05, threshold_grid_Ss, Ref(microarray_npmle.prior))
+limma_z_cutoffs_005 =
+    invert_limma_pvalue.(0.05, threshold_grid_Ss, Ref(microarray_limma.prior))
+npmle_z_cutoffs_005 =
+    invert_limma_pvalue.(0.05, threshold_grid_Ss, Ref(microarray_npmle.prior))
 ttest_z_cutoffs_005 = invert_ttest_pvalue.(0.05, threshold_grid_Ss)
 
-cutoff_matrix = [npmle_z_cutoffs_bh limma_z_cutoffs_bh ttest_z_cutoffs_bh npmle_z_cutoffs_005  limma_z_cutoffs_005 ttest_z_cutoffs_005]
+cutoff_matrix =
+    [npmle_z_cutoffs_bh limma_z_cutoffs_bh ttest_z_cutoffs_bh npmle_z_cutoffs_005 limma_z_cutoffs_005 ttest_z_cutoffs_005]
 cutoff_colors = [:purple :darkorange :grey :purple :darkorange :grey]
 cutoff_linestyles = [:solid :solid :solid :dash :dash :dash]
 
-plot!(twod_histogram_plot,  log.(response.(threshold_grid_Ss)),cutoff_matrix,
+plot!(
+    twod_histogram_plot,
+    log.(response.(threshold_grid_Ss)),
+    cutoff_matrix,
     color = cutoff_colors,
     ylim = (-2.2, 2.2),
-    linestyle= cutoff_linestyles,
-    label = ["NPMLE (BH)" "Limma (BH)" "t-test (BH)" "NPMLE (unadj.)" "Limma (unadj)" "t-test (unadj.)"])
+    linestyle = cutoff_linestyles,
+    label = ["NPMLE (BH)" "Limma (BH)" "t-test (BH)" "NPMLE (unadj.)" "Limma (unadj)" "t-test (unadj.)"],
+)
 
-plot!(twod_histogram_plot, log.(response.(threshold_grid_Ss)), -cutoff_matrix,
+plot!(
+    twod_histogram_plot,
+    log.(response.(threshold_grid_Ss)),
+    -cutoff_matrix,
     color = cutoff_colors,
-    linestyle= cutoff_linestyles,
-    label = "")
+    linestyle = cutoff_linestyles,
+    label = "",
+)
 
 #---------------------------------------------------------
 # Put all panels together
@@ -152,17 +184,10 @@ plot!(twod_histogram_plot, log.(response.(threshold_grid_Ss)), -cutoff_matrix,
 
 
 
-Plots.plot(
-    histogram_plot,
-    prior_plot,
-    size = (800, 300),
-    layout = (1,2))
+Plots.plot(histogram_plot, prior_plot, size = (800, 300), layout = (1, 2))
 
 savefig("first_two_microarray_panels.pdf")
 
-Plots.plot(
-    twod_histogram_plot,
-    size = (400, 300),
-)
+Plots.plot(twod_histogram_plot, size = (400, 300))
 
 savefig("microarray_rejection_regions.pdf")
