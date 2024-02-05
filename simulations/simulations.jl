@@ -16,7 +16,7 @@ using MosekTools
 using Setfield
 
 # Monte Carlo replicates
-nreps = 100
+nreps = 1_000
 
 
 Random.seed!(1)
