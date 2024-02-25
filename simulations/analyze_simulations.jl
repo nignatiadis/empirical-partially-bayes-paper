@@ -6,6 +6,8 @@ using StatsPlots
 using StatsBase
 using LaTeXStrings
 
+
+
 pgfplotsx()
 theme(
     :default;
@@ -20,284 +22,121 @@ theme(
 
 
 dir = @__DIR__
-
 method_res = load(joinpath(dir, "method_res_3k.jld2"), "method_res")
+names(method_res)
 
-summary_tbl =
-    method_res |>
-    x ->
-        groupby(x, [:simulation_setting, :ν, :adversarial_ordering, :method_name]) |>
+
+function sanitize_data(method_res)
+    summary_tbl =
+        method_res |>
+        x -> groupby(x, [:simulation_setting, :ν, :adversarial_ordering, :method_name]) |>
         x -> DataFrames.combine(x, nrow, [:FDP, :Power] .=> mean, [:FDP, :Power] .=> std)
 
-unique(summary_tbl.simulation_setting)
+    cleaned_method_names = CategoricalArray(string.(summary_tbl.method_name))
+    recode!(
+        cleaned_method_names,
+        "t_npmle_BH" => "NPMLE (BH)",
+        "t_limma_BH" => "Limma (BH)",
+        "t_standard_BH" => "t-test (BH)",
+        "t_oracle_BH" => "Oracle (BH)",
+        "t_oracle_storey" => "Oracle (Storey)",
+    )
 
-cleaned_method_names = CategoricalArray(string.(summary_tbl.method_name))
-recode!(
-    cleaned_method_names,
-    "t_npmle_BH" => "NPMLE (BH)",
-    "t_limma_BH" => "Limma (BH)",
-    "t_standard_BH" => "t-test (BH)",
-    "t_oracle_BH" => "Oracle (BH)",
-    "t_oracle_storey" => "Oracle (Storey)",
-)
-
-levels!(
-    cleaned_method_names,
-    ["t-test (BH)", "Limma (BH)", "NPMLE (BH)", "Oracle (BH)", "Oracle (Storey)"],
-)
-summary_tbl.cleaned_method_names = cleaned_method_names
-summary_tbl.code = Int.(summary_tbl.cleaned_method_names.refs)
-summary_tbl.ν_factor = CategoricalArray(string.(summary_tbl.ν))
-levels!(summary_tbl.ν_factor, ["2", "4", "8", "16", "32", "64"])
+    levels!(
+        cleaned_method_names,
+        ["t-test (BH)", "Limma (BH)", "NPMLE (BH)", "Oracle (BH)", "Oracle (Storey)"],
+    )
+    summary_tbl.cleaned_method_names = cleaned_method_names
+    summary_tbl.code = Int.(summary_tbl.cleaned_method_names.refs)
+    summary_tbl.ν_factor = CategoricalArray(string.(summary_tbl.ν))
+    levels!(summary_tbl.ν_factor, ["2", "4", "8", "16", "32", "64"])
+ 
+    return summary_tbl
+end
 
 
-#method_shapes = [:circle  :dtriangle :rtriangle :ltriangle :utriangle]
-method_colors =
+function plot_groupedbar(summary_tbl::DataFrame, setting::Symbol, adv_ordering::Bool)
+
+    simulation_name_map =   Dict(
+        :Dirac => L"\textrm{Dirac}",
+        :InverseGamma => L"\textrm{Scaled inverse } \chi^2",
+        :TwoPointPrior => L"\textrm{Two-point}",
+    )
+
+    method_colors =
     [colorant"#4C413F" colorant"#278B9A" colorant"#E75B64" colorant"#D8AF39" colorant"#E8C4A2"]
-#method_linestyles = [:solid :dash :dot :dashdot :dashdotdot]
 
-dirac_nonadv = filter(
-    row -> (row.simulation_setting == :Dirac) & !row.adversarial_ordering,
-    summary_tbl,
-)
+    filtered_data = filter(
+        row -> (row.simulation_setting == setting) & (row.adversarial_ordering == adv_ordering),
+        summary_tbl,
+    )
 
-dirac_fdr = @df dirac_nonadv groupedbar(
-    :ν_factor,
-    :FDP_mean,
-    group = :cleaned_method_names,
-    ylim = (0, 0.148),
-    yticks = 0:0.02:0.12,
-    color = method_colors,
-    linestyle = :solid,
-    legend = :top,
-    alpha = 0.7,
-    legend_column = 3,
-)
-hline!(
-    dirac_fdr,
-    [0.1],
-    linestyle = :dash,
-    color = :grey,
-    label = "",
-    xlabel = L"\nu",
-    ylabel = "FDR",
-    title = "Dirac",
-)
+    fdr_plot = @df filtered_data groupedbar(
+        :ν_factor,
+        :FDP_mean,
+        group = :cleaned_method_names,
+        ylim = (0, 0.158), # Adjust based on your data
+        yticks = 0:0.02:0.12,
+        color = method_colors,
+        linestyle = :solid,
+        legend = :top,
+        alpha = 0.7,
+        legend_column = 3,
+        xlabel = L"\nu",
+        ylabel = "FDR",
+        title = simulation_name_map[setting],
+    )
 
-dirac_power = @df dirac_nonadv groupedbar(
-    :ν_factor,
-    :Power_mean,
-    group = :cleaned_method_names,
-    ylim = (0, 1),
-    color = method_colors,
-    linestyle = :solid,
-    legend = :top,
-    alpha = 0.7,
-    legend_column = 3,
-    xlabel = L"\nu",
-    ylabel = "Power",
-    title = "Dirac",
-)
+    hline!(fdr_plot, [0.1], linestyle = :dash, color = :grey, label = "")
 
-inversegamma_nonadv = filter(
-    row -> (row.simulation_setting == :InverseGamma) & !row.adversarial_ordering,
-    summary_tbl,
-)
+    power_plot = @df filtered_data groupedbar(
+        :ν_factor,
+        :Power_mean,
+        group = :cleaned_method_names,
+        ylim = (0, 1),
+        color = method_colors,
+        linestyle = :solid,
+        legend = :top,
+        alpha = 0.7,
+        legend_column = 3,
+        xlabel = L"\nu",
+        ylabel = "Power",
+        title =  simulation_name_map[setting],
+    )
+
+    return fdr_plot, power_plot
+end
+
+summary_tbl = sanitize_data(method_res)
+
+simulation_settings = unique(summary_tbl.simulation_setting)
 
 
-inversegamma_nonadv_fdr = @df inversegamma_nonadv groupedbar(
-    :ν_factor,
-    :FDP_mean,
-    group = :cleaned_method_names,
-    ylim = (0, 0.148),
-    yticks = 0:0.02:0.12,
-    color = method_colors,
-    linestyle = :solid,
-    legend = :top,
-    alpha = 0.7,
-    legend_column = 3,
-)
+nonadversarial_plots = []
 
-hline!(
-    inversegamma_nonadv_fdr,
-    [0.1],
-    linestyle = :dash,
-    color = :grey,
-    label = "",
-    xlabel = L"\nu",
-    ylabel = "FDR",
-    title = L"\textrm{Scaled inverse } \chi^2",
-)
-
-inversegamma_nonadv_power = @df inversegamma_nonadv groupedbar(
-    :ν_factor,
-    :Power_mean,
-    group = :cleaned_method_names,
-    ylim = (0, 1),
-    color = method_colors,
-    linestyle = :solid,
-    legend = :top,
-    alpha = 0.7,
-    legend_column = 3,
-    xlabel = L"\nu",
-    ylabel = "Power",
-    title = L"\textrm{Scaled inverse } \chi^2",
-)
+for setting in simulation_settings
+    push!(nonadversarial_plots, plot_groupedbar(summary_tbl, setting, false)...)
+end
 
 
-twopoint_nonadv = filter(
-    row -> (row.simulation_setting == :TwoPointPrior) & !row.adversarial_ordering,
-    summary_tbl,
-)
-
-twopoint_nonadv_fdr = @df twopoint_nonadv groupedbar(
-    :ν_factor,
-    :FDP_mean,
-    group = :cleaned_method_names,
-    ylim = (0, 0.148),
-    yticks = 0:0.02:0.12,
-    color = method_colors,
-    linestyle = :solid,
-    legend = :top,
-    alpha = 0.7,
-    legend_column = 3,
-)
-hline!(
-    twopoint_nonadv_fdr,
-    [0.1],
-    linestyle = :dash,
-    color = :grey,
-    label = "",
-    xlabel = L"\nu",
-    ylabel = "FDR",
-    title = "Two Point",
-)
-
-twopoint_nonadv_power = @df twopoint_nonadv groupedbar(
-    :ν_factor,
-    :Power_mean,
-    group = :cleaned_method_names,
-    ylim = (0, 1),
-    color = method_colors,
-    linestyle = :solid,
-    legend = :top,
-    alpha = 0.7,
-    legend_column = 3,
-    xlabel = L"\nu",
-    ylabel = "Power",
-    title = "Two Point",
-)
-
-nonadv_plot = plot(
-    dirac_fdr,
-    dirac_power,
-    inversegamma_nonadv_fdr,
-    inversegamma_nonadv_power,
-    twopoint_nonadv_fdr,
-    twopoint_nonadv_power,
-    layout = (3, 2),
-    size = (1200, 900),
-    margin = 3 * Plots.mm,
-)
+nonadv_plot = plot(nonadversarial_plots..., 
+        layout = @layout([a b; c d; e f]), 
+        margin = 3 * Plots.mm,
+        size = (1200, 900))
+        
 
 savefig(nonadv_plot, "main_simulations.pdf")
 
+adversarial_plots = []
 
-inversegamma_adv = filter(
-    row -> (row.simulation_setting == :InverseGamma) & row.adversarial_ordering,
-    summary_tbl,
-)
-inversegamma_adv_fdr = @df inversegamma_adv groupedbar(
-    :ν_factor,
-    :FDP_mean,
-    group = :cleaned_method_names,
-    ylim = (0, 0.158),
-    yticks = 0:0.02:0.12,
-    color = method_colors,
-    linestyle = :solid,
-    legend = :top,
-    alpha = 0.7,
-    legend_column = 3,
-)
-hline!(
-    inversegamma_adv_fdr,
-    [0.1],
-    linestyle = :dash,
-    color = :grey,
-    label = "",
-    xlabel = L"\nu",
-    ylabel = "FDR",
-    title = L"\textrm{Scaled inverse } \chi^2",
-)
+for setting in [:InverseGamma, :TwoPointPrior]
+    push!(adversarial_plots, plot_groupedbar(summary_tbl, setting, true)...)
+end
 
-inversegamma_adv_power = @df inversegamma_adv groupedbar(
-    :ν_factor,
-    :Power_mean,
-    group = :cleaned_method_names,
-    ylim = (0, 1),
-    color = method_colors,
-    linestyle = :solid,
-    legend = :top,
-    alpha = 0.7,
-    legend_column = 3,
-    xlabel = L"\nu",
-    ylabel = "Power",
-    title = L"\textrm{Scaled inverse } \chi^2",
-)
+adv_plot = plot(adversarial_plots..., 
+        layout = @layout([a b; c d]), 
+        margin = 3 * Plots.mm,
+        size = (1200, 650))
 
-
-twopoint_adv = filter(
-    row -> (row.simulation_setting == :TwoPointPrior) & row.adversarial_ordering,
-    summary_tbl,
-)
-
-twopoint_adv_fdr = @df twopoint_adv groupedbar(
-    :ν_factor,
-    :FDP_mean,
-    group = :cleaned_method_names,
-    ylim = (0, 0.158),
-    yticks = 0:0.02:0.12,
-    color = method_colors,
-    linestyle = :solid,
-    legend = :top,
-    alpha = 0.7,
-    legend_column = 3,
-)
-hline!(
-    twopoint_adv_fdr,
-    [0.1],
-    linestyle = :dash,
-    color = :grey,
-    label = "",
-    xlabel = L"\nu",
-    ylabel = "FDR",
-    title = "Two Point",
-)
-
-twopoint_adv_power = @df twopoint_adv groupedbar(
-    :ν_factor,
-    :Power_mean,
-    group = :cleaned_method_names,
-    ylim = (0, 1),
-    color = method_colors,
-    linestyle = :solid,
-    legend = :top,
-    alpha = 0.7,
-    legend_column = 3,
-    xlabel = L"\nu",
-    ylabel = "Power",
-    title = "Two Point",
-)
-
-
-adv_plot = plot(
-    inversegamma_adv_fdr,
-    inversegamma_adv_power,
-    twopoint_adv_fdr,
-    twopoint_adv_power,
-    layout = (2, 2),
-    size = (1200, 650),
-    margin = 3 * Plots.mm,
-)
 
 savefig(adv_plot, "adv_simulations.pdf")
