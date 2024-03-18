@@ -250,7 +250,7 @@ for variance_setting in [:InverseGamma; :TwoPointPrior]
         :decreasing)...)
 end
 
-adversarial_normal_plot = plot(nonadversarial_normal_plots..., 
+adversarial_normal_plot = plot(adversarial_normal_plots..., 
     layout = @layout([a b c; d e f]), 
     margin = 3 * Plots.mm,
     size = (1400, 650))

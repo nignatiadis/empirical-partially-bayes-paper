@@ -14,6 +14,8 @@ using Random
 using JLD2
 using MosekTools
 using Setfield
+using JuMP
+using ProgressMeter
 
 # Monte Carlo replicates
 nreps = 1_000
@@ -58,14 +60,16 @@ general_limma_sim = LimmaSimulation(
     ordering = ordering_setting,
 )
 
-
+mosek_attrib = optimizer_with_attributes(Mosek.Optimizer, "QUIET" => true,
+              "INTPNT_MAX_ITERATIONS" => 4000,
+              "INTPNT_CO_TOL_DFEAS" => 1e-7)
 
 basic_npmle = Empirikos.EmpiricalPartiallyBayesTTest(
                 prior = DiscretePriorClass(),
                 prior_grid_size = 300,
-                discretize_marginal = true,
+                discretize_marginal = false,
                 α = 0.1,
-                solver = Mosek.Optimizer,
+                solver = mosek_attrib,
             )
 
 
@@ -83,8 +87,9 @@ method_res = DataFrame(
     α = Float64[],
 )
 
+
 for ν in νs
-    for k in Base.OneTo(nreps)
+    @showprogress dt=1 desc="iters" for k in Base.OneTo(nreps)
         limma_sim = @set general_limma_sim.ν = ν
         method_list = (
             t_standard_BH = SimultaneousTTest(α = 0.1),
@@ -133,5 +138,4 @@ for ν in νs
 end
 
 
-
-jldsave("method_res_$(variance_key)_$(signal_key)_$(ordering_key).jld2"; method_res=method_res)
+jldsave("method_resd_$(variance_key)_$(signal_key)_$(ordering_key).jld2"; method_res=method_res)
