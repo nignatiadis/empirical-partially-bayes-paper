@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=noiserdd
-#SBATCH --array=1-18
+#SBATCH --array=1-108
 #SBATCH --time=12:00:00
 #SBATCH --partition=general
 #SBATCH --ntasks=1
