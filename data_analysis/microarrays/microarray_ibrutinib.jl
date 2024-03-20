@@ -1,13 +1,17 @@
+using Pkg
+
+dir = @__DIR__
+Pkg.activate(joinpath(dir, "..","..","simulations"))
+
 using Empirikos
 using CSV
 using LaTeXStrings
 using Statistics
 using Plots
-using MosekTools    
+using MosekTools
+using DataFrames
 
-dir = @__DIR__
 include(joinpath(dir, "..", "..", "helpers.jl"))
-
 
 pgfplotsx()
 theme(
@@ -21,28 +25,45 @@ theme(
     size = (420, 330),
 )
 
-microarray = CSV.File(joinpath(dir, "microarray_ibrutinib.csv"))
+
+microarray = CSV.File(joinpath(dir, "microarray_ibrutinib.csv")) |> DataFrame
+microarray = filter(row -> row.residual_dof == 11, microarray)
+
 
 # Code to be added to Empirikos.jl tests
 # limma_ν_prior = 10.42875
 # limma_prior_var_naive_vs_act = 0.007079249
 
 microarray_Ss =
-    Empirikos.ScaledChiSquareSample.(abs2.(microarray.se_hat), microarray.residual_dof)
+    ScaledChiSquareSample.(abs2.(microarray.se_hat), microarray.residual_dof)
 microarray_mu_hat = microarray.mu_hat
-
 microarray_samples = NormalChiSquareSample.(microarray.mu_hat, microarray_Ss)
 
-eb_ttest_npmle = Empirikos.EmpiricalPartiallyBayesTTest(;solver=Mosek.Optimizer)
-eb_ttest_limma = Empirikos.EmpiricalPartiallyBayesTTest(;prior=Empirikos.Limma())
+microarray_npmle = fit(
+    Empirikos.EmpiricalPartiallyBayesTTest(
+        prior = DiscretePriorClass(),
+        solver = Mosek.Optimizer,
+        α = 0.05,
+        discretize_marginal = false,
+    ),
+    microarray_samples,
+)
 
-microarray_npmle = fit(eb_ttest_npmle, microarray_samples)
+microarray_limma =
+    fit(Empirikos.EmpiricalPartiallyBayesTTest(
+        prior = Empirikos.Limma(),
+        solver = nothing,
+        α = 0.05),
+        microarray_samples)
 
-microarray_limma = fit(eb_ttest_limma, microarray_samples)
-microarray_t = fit(SimultaneousTTest(), microarray_samples)
-
+# Comparison to limma results from R package
+# limma_prior_var_naive_vs_act = 0.007078982
+# limma_ν_prior = 10.43969
 microarray_limma.prior
 
+microarray_t = fit(SimultaneousTTest(α=0.05), microarray_samples)
+
+# Rejections by method
 (
     microarray_npmle.total_rejections,
     microarray_limma.total_rejections,
@@ -55,7 +76,7 @@ microarray_limma.prior
 extrema(support(microarray_npmle.prior))
 
 var_grid_refine = 0.0001:0.0001:0.05
-var_grid_refine_samples = Empirikos.ScaledChiSquareSample.(var_grid_refine, 11)
+var_grid_refine_samples = ScaledChiSquareSample.(var_grid_refine, 11)
 
 marginal_pdf_limma = pdf.(microarray_limma.prior, var_grid_refine_samples)
 marginal_pdf_npmle = pdf.(microarray_npmle.prior, var_grid_refine_samples)
