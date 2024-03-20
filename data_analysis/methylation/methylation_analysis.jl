@@ -1,11 +1,16 @@
+using Pkg
+
+dir = @__DIR__
+Pkg.activate(joinpath(dir, "..","..","simulations"))
 using Empirikos
 using CSV
 using LaTeXStrings
 using Statistics
 using Plots
+using MosekTools
 
-dir = @__DIR__
-include(joinpath(dir, "..","..", "helpers.jl"))
+
+include(joinpath(dir, "..", "..", "helpers.jl"))
 
 
 pgfplotsx()
@@ -22,26 +27,43 @@ theme(
 
 methylation = CSV.File(joinpath(dir, "methylation_naive_vs_act.csv"))
 
-# Code to be added to Empirikos.jl tests
-# limma_ν_prior = 3.957179
-# limma_prior_var_naive_vs_act = 0.03664045646
 
-methylation_Ss =
-    Empirikos.ScaledChiSquareSample.(abs2.(methylation.sigma_hat), 4)
+methylation_Ss = ScaledChiSquareSample.(abs2.(methylation.sigma_hat), 4)
 methylation_mu_hat = methylation.mu_hat
+methylation_samples = Empirikos.NormalChiSquareSample.(methylation.mu_hat, methylation_Ss)
 
-methylation_npmle = fit(PartiallyBayesTest(prior=NPMLE, discretize_marginal=true),
-    methylation_Ss, methylation_mu_hat)
-methylation_limma = fit(PartiallyBayesTest(prior=Limma), methylation_Ss, methylation_mu_hat)
+
+
+methylation_npmle = fit(
+    Empirikos.EmpiricalPartiallyBayesTTest(
+        prior = DiscretePriorClass(),
+        solver = Mosek.Optimizer,
+        α = 0.05,
+        discretize_marginal = false,
+    ),
+    methylation_samples,
+)
+
+methylation_limma =
+    fit(Empirikos.EmpiricalPartiallyBayesTTest(
+        prior = Empirikos.Limma(),
+        solver = nothing,
+        α = 0.05),
+        methylation_samples)
+# Comparison to limma results from R package
+# limma_prior_var_naive_vs_act = 0.03664045646
+# limma_ν_prior = 3.957179
 methylation_limma.prior
-
-methylation_t = fit(SimultaneousTTest(), methylation_Ss, methylation_mu_hat)
-
-
+methylation_t = fit(SimultaneousTTest(α=0.05), methylation_samples)
 
 # rejections by method
+(
+    methylation_npmle.total_rejections,
+    methylation_limma.total_rejections,
+    methylation_t.total_rejections,
+)
 
-(methylation_npmle.total_rejections, methylation_limma.total_rejections, methylation_t.total_rejections)
+# cutoffs by method
 (methylation_npmle.cutoff, methylation_limma.cutoff, methylation_t.cutoff)
 
 # Identify rejection that was only done by t-test
@@ -58,7 +80,7 @@ sort(response.(methylation_Ss))[1:2]
 extrema(support(methylation_npmle.prior))
 
 var_grid_refine = 0.001:0.001:1.0
-var_grid_refine_samples = Empirikos.ScaledChiSquareSample.(var_grid_refine, 4)
+var_grid_refine_samples = ScaledChiSquareSample.(var_grid_refine, 4)
 
 marginal_pdf_limma = pdf.(methylation_limma.prior, var_grid_refine_samples)
 marginal_pdf_npmle = pdf.(methylation_npmle.prior, var_grid_refine_samples)
@@ -104,6 +126,7 @@ prior_plot = Plots.plot(
     ylabel = L"g(\sigma^2)",
 )
 
+
 Plots.plot!(
     prior_plot,
     u -> pdf(methylation_limma.prior, u),
@@ -134,113 +157,148 @@ twod_histogram_plot = histogram2d(
 
 equidistant_grid = 0.0:0.001:1
 extrema(response.(methylation_Ss))
-threshold_grid_Ss = ScaledChiSquareSample.(quantile(response.(methylation_Ss), equidistant_grid), 4)
+threshold_grid_Ss =
+    ScaledChiSquareSample.(quantile(response.(methylation_Ss), equidistant_grid), 4)
 
 
-limma_z_cutoffs_bh = invert_limma_pvalue.(methylation_limma.cutoff, threshold_grid_Ss, Ref(methylation_limma.prior))
-npmle_z_cutoffs_bh = invert_limma_pvalue.(methylation_npmle.cutoff, threshold_grid_Ss, Ref(methylation_npmle.prior))
+limma_z_cutoffs_bh =
+    invert_limma_pvalue.(
+        methylation_limma.cutoff,
+        threshold_grid_Ss,
+        Ref(methylation_limma.prior),
+    )
+
+npmle_z_cutoffs_bh =
+    invert_limma_pvalue.(
+        methylation_npmle.cutoff,
+        threshold_grid_Ss,
+        Ref(methylation_npmle.prior),
+    )
+
+    
 ttest_z_cutoffs_bh = invert_ttest_pvalue.(methylation_t.cutoff, threshold_grid_Ss)
 
 
-limma_z_cutoffs_005 = invert_limma_pvalue.(0.05, threshold_grid_Ss, Ref(methylation_limma.prior))
-npmle_z_cutoffs_005 = invert_limma_pvalue.(0.05, threshold_grid_Ss, Ref(methylation_npmle.prior))
+limma_z_cutoffs_005 =
+    invert_limma_pvalue.(0.05, threshold_grid_Ss, Ref(methylation_limma.prior))
+npmle_z_cutoffs_005 =
+    invert_limma_pvalue.(0.05, threshold_grid_Ss, Ref(methylation_npmle.prior))
 ttest_z_cutoffs_005 = invert_ttest_pvalue.(0.05, threshold_grid_Ss)
 
-cutoff_matrix = [npmle_z_cutoffs_bh limma_z_cutoffs_bh ttest_z_cutoffs_bh npmle_z_cutoffs_005  limma_z_cutoffs_005 ttest_z_cutoffs_005]
+cutoff_matrix =
+    [npmle_z_cutoffs_bh limma_z_cutoffs_bh ttest_z_cutoffs_bh npmle_z_cutoffs_005 limma_z_cutoffs_005 ttest_z_cutoffs_005]
 cutoff_colors = [:purple :darkorange :grey :purple :darkorange :grey]
 cutoff_linestyles = [:solid :solid :solid :dash :dash :dash]
 
-plot!(twod_histogram_plot,  log.(response.(threshold_grid_Ss)),cutoff_matrix,
-    color = cutoff_colors,
+subset_idx = 1:6      # [4; 6] 
+plot!(
+    twod_histogram_plot,
+    log.(response.(threshold_grid_Ss)),
+    cutoff_matrix[:, subset_idx],
+    color = cutoff_colors[:, subset_idx],
     ylim = (-6, 6),
-    linestyle= cutoff_linestyles,
-    label = ["NPMLE (BH)" "Limma (BH)" "t-test (BH)" "NPMLE (unadj.)" "Limma (unadj)" "t-test (unadj.)"])
+    linestyle = cutoff_linestyles[:, subset_idx],
+    label = ["NPMLE (BH)" "Limma (BH)" "t-test (BH)" "NPMLE (unadj.)" "Limma (unadj)" "t-test (unadj.)"][
+        :,
+        subset_idx,
+    ],
+)
 
-plot!(twod_histogram_plot, log.(response.(threshold_grid_Ss)), -cutoff_matrix,
-    color = cutoff_colors,
-    linestyle= cutoff_linestyles,
-    label = "")
+plot!(
+    twod_histogram_plot,
+    log.(response.(threshold_grid_Ss)),
+    -cutoff_matrix[:, subset_idx],
+    color = cutoff_colors[:, subset_idx],
+    linestyle = cutoff_linestyles[:, subset_idx],
+    label = "",
+)
 
 #---------------------------------------------------------
 # Put all panels together
 #---------------------------------------------------------
 
-
-Plots.plot(
-    histogram_plot,
-    prior_plot,
-    size = (800, 300),
-    layout = (1,2)
-)
-
+# Panels A+B
+Plots.plot(histogram_plot, prior_plot, size = (800, 300), layout = (1, 2))
 savefig("first_two_methylation_panels.pdf")
 
-Plots.plot(
-    twod_histogram_plot,
-    size = (400, 300),
-)
-
+# Panel C
+Plots.plot(twod_histogram_plot, size = (400, 300))
 savefig("methylation_rejection_regions.pdf")
 
+
+#---------------------------------------------------------
 # Stratified p-value histograms
+#---------------------------------------------------------
 
 
 ten_percent_quantile_low = quantile(response.(methylation_Ss), 0.10)
 ten_percent_quantile_high = quantile(response.(methylation_Ss), 0.90)
 
-keep_idx_low = response.(methylation_Ss) .<= ten_percent_quantile
+keep_idx_low = response.(methylation_Ss) .<= ten_percent_quantile_low
 keep_idx_high = response.(methylation_Ss) .>= ten_percent_quantile_high
 keep_idx_all = fill(true, length(keep_idx_low))
 
 hist_params = (
-normalize = true,
-fillalpha = 0.2,
-linewidth = 0.3,
-bins = 20,
-xlim = (0, 1),
-ylim = (0.001,7),
-xlabel = L"P_i",
-ylabel = "Density",
-legend = :topright,
-titlefontsize=10
+    normalize = true,
+    fillalpha = 0.2,
+    linewidth = 0.3,
+    bins = 20,
+    xlim = (0, 1),
+    ylim = (0.001, 7),
+    xlabel = L"P_i",
+    ylabel = "Density",
+    legend = :topright,
+    titlefontsize = 10,
 )
 
 
 ttest_histograms = plot(
-    histogram(methylation_t.pvalue[keep_idx_all];
-        fillcolor=:grey,
+    histogram(
+        methylation_t.pvalue[keep_idx_all];
+        fillcolor = :grey,
         title = L"\textrm{ all }\, S_i^2",
         label = "t-test",
-        hist_params...),
-    histogram(methylation_t.pvalue[keep_idx_low];
-        fillcolor=:grey,
+        hist_params...,
+    ),
+    histogram(
+        methylation_t.pvalue[keep_idx_low];
+        fillcolor = :grey,
         title = L"S_i^2\, \textrm{ in  bottom }\, 10\%",
         label = "t-test",
-        hist_params...),
-    histogram(methylation_t.pvalue[keep_idx_high];
-        fillcolor=:grey,
+        hist_params...,
+    ),
+    histogram(
+        methylation_t.pvalue[keep_idx_high];
+        fillcolor = :grey,
         title = L"S_i^2\, \textrm{ in  top }\, 10\%",
         label = "t-test",
-        hist_params...),
-    histogram(methylation_npmle.pvalue[keep_idx_all];
-        fillcolor=:purple,
+        hist_params...,
+    ),
+    histogram(
+        methylation_npmle.pvalue[keep_idx_all];
+        fillcolor = :purple,
         title = L"\textrm{ all }\, S_i^2",
         label = "NPMLE",
-        hist_params...),
-    histogram(methylation_npmle.pvalue[keep_idx_low];
-        fillcolor=:purple,
+        hist_params...,
+    ),
+    histogram(
+        methylation_npmle.pvalue[keep_idx_low];
+        fillcolor = :purple,
         title = L"S_i^2\, \textrm{ in  bottom }\, 10\%",
         label = "NPMLE",
-        hist_params...),
-    histogram(methylation_npmle.pvalue[keep_idx_high];
-        fillcolor=:purple,
+        hist_params...,
+    ),
+    histogram(
+        methylation_npmle.pvalue[keep_idx_high];
+        fillcolor = :purple,
         title = L"S_i^2\, \textrm{ in  top }\, 10\%",
         label = "NPMLE",
-        hist_params...),
-    bottom_margin = 9*Plots.mm,
-    layout = (2,3),
+        hist_params...,
+    ),
+    bottom_margin = 9 * Plots.mm,
+    layout = (2, 3),
     size = (1000, 500),
-    thickness_scaling=1.6
+    thickness_scaling = 1.6,
 )
 
 savefig("methylation_conditional_pvalue_histograms.pdf")
