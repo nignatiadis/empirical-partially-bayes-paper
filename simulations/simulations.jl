@@ -37,6 +37,8 @@ signal_settings = (conjugate = :conjugate, point_mass = Dirac(4), normal = Norma
 
 ordering_settings = (random = :random, decreasing = :decreasing)
 
+νs = [64]
+variance_settings = (InverseGamma = Empirikos.InverseScaledChiSquare(1.0, 6.0),)
 variance_keys = keys(variance_settings)
 signal_keys = keys(signal_settings)
 ordering_keys = keys(ordering_settings)
@@ -59,8 +61,10 @@ limma_sim = LimmaSimulation(
 mosek_attrib = optimizer_with_attributes(
     Mosek.Optimizer,
     "QUIET" => true,
-    "INTPNT_MAX_ITERATIONS" => 4000,
+    "INTPNT_MAX_ITERATIONS" => 10000,
     "INTPNT_CO_TOL_DFEAS" => 1e-7,
+    "INTPNT_CO_TOL_REL_GAP" => 1e-6,
+    "INTPNT_CO_TOL_MU_RED" => 1e-7
 )
 
 basic_npmle = Empirikos.EmpiricalPartiallyBayesTTest(
@@ -88,6 +92,7 @@ method_res = DataFrame(
 
 
 @showprogress dt = 1 desc = "iters" for k in Base.OneTo(nreps)
+    @show k
     method_list = (
         t_standard_BH = SimultaneousTTest(α = 0.1),
         t_limma_BH = Empirikos.EmpiricalPartiallyBayesTTest(
