@@ -18,7 +18,7 @@ using JuMP
 using ProgressMeter
 
 # Monte Carlo replicates
-nreps = 1_000
+nreps = 3_000
 
 
 Random.seed!(1)
@@ -37,8 +37,7 @@ signal_settings = (conjugate = :conjugate, point_mass = Dirac(4), normal = Norma
 
 ordering_settings = (random = :random, decreasing = :decreasing)
 
-νs = [64]
-variance_settings = (InverseGamma = Empirikos.InverseScaledChiSquare(1.0, 6.0),)
+
 variance_keys = keys(variance_settings)
 signal_keys = keys(signal_settings)
 ordering_keys = keys(ordering_settings)
@@ -70,7 +69,7 @@ mosek_attrib = optimizer_with_attributes(
 basic_npmle = Empirikos.EmpiricalPartiallyBayesTTest(
     prior = DiscretePriorClass(),
     prior_grid_size = 300,
-    discretize_marginal = false,
+    discretize_marginal = true,
     α = 0.1,
     solver = mosek_attrib,
 )
@@ -102,7 +101,7 @@ method_res = DataFrame(
         ),
         t_npmle_BH = basic_npmle,
         t_npmle_BH_0 = (@set basic_npmle.lower_quantile = 0.0),
-        t_npmle_BH_02 = (@set basic_npmle.lower_quantile = 0.2),
+        t_npmle_BH_02 = (@set basic_npmle.lower_quantile = 0.1),
         t_oracle_BH = Empirikos.EmpiricalPartiallyBayesTTest(
             prior = ground_truth_variance_prior,
             solver = nothing,
