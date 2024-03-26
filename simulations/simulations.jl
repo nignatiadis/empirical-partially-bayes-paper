@@ -19,7 +19,7 @@ using ProgressMeter
 
 # Monte Carlo replicates
 nreps = 3_000
-
+nreps_sensi = 1_000
 
 Random.seed!(1)
 
@@ -69,7 +69,7 @@ mosek_attrib = optimizer_with_attributes(
 basic_npmle = Empirikos.EmpiricalPartiallyBayesTTest(
     prior = DiscretePriorClass(),
     prior_grid_size = 300,
-    discretize_marginal = true,
+    discretize_marginal = false,
     α = 0.1,
     solver = mosek_attrib,
 )
@@ -100,8 +100,6 @@ method_res = DataFrame(
             α = 0.1,
         ),
         t_npmle_BH = basic_npmle,
-        t_npmle_BH_0 = (@set basic_npmle.lower_quantile = 0.0),
-        t_npmle_BH_02 = (@set basic_npmle.lower_quantile = 0.1),
         t_oracle_BH = Empirikos.EmpiricalPartiallyBayesTTest(
             prior = ground_truth_variance_prior,
             solver = nothing,
@@ -114,6 +112,13 @@ method_res = DataFrame(
             multiple_test = BenjaminiHochbergAdaptive(Storey(0.5)),
         ),
     )
+
+    if k <= nreps_sensi
+        method_list = (method_list...,
+            t_npmle_BH_0 = (@set basic_npmle.lower_quantile = 0.0),
+            t_npmle_BH_01 = (@set basic_npmle.lower_quantile = 0.1)
+        )
+    end
 
     _sim = run_simulation(limma_sim)
     for key in keys(method_list)
