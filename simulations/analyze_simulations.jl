@@ -1,3 +1,6 @@
+using Pkg
+Pkg.activate(".")
+
 using FileIO
 using CategoricalArrays
 using DataFrames
@@ -21,8 +24,10 @@ theme(
 )
 
 
+
+
 dir = @__DIR__
-data_dir = joinpath(dir, "data")
+data_dir = joinpath(dir, "simulation_data")
 
 # List all .jld2 files in the directory
 files = filter(x -> occursin(r".jld2$", x), readdir(data_dir))
@@ -37,8 +42,6 @@ for file in files
     method_res = vcat(method_res, df)
 end
 
-names(method_res)
-
 
 function sanitize_data(method_res; keep_npmle_variants = false)
     summary_tbl =
@@ -47,18 +50,18 @@ function sanitize_data(method_res; keep_npmle_variants = false)
         x -> DataFrames.combine(x, nrow, [:FDP, :Power, :cond_cov] .=> mean, [:FDP, :Power] .=> std)
 
     if keep_npmle_variants
-        npmle_methods = [:t_npmle_BH_0; :t_npmle_BH; :t_npmle_BH_02]
+        npmle_methods = [:t_npmle_BH_0; :t_npmle_BH; :t_npmle_BH_01]
         summary_tbl = filter(row -> row.method_name ∈ npmle_methods, summary_tbl)
         summary_tbl.cleaned_method_names = CategoricalArray(string.(summary_tbl.method_name))
         recode!(
             summary_tbl.cleaned_method_names,
             "t_npmle_BH" => "NPMLE(0.01)",
-            "t_npmle_BH_02" => "NPMLE(0.2)",
+            "t_npmle_BH_01" => "NPMLE(0.1)",
             "t_npmle_BH_0" => "NPMLE(min)",
         )
         levels!(
             summary_tbl.cleaned_method_names,
-            ["NPMLE(min)"; "NPMLE(0.01)"; "NPMLE(0.2)"]
+            ["NPMLE(min)"; "NPMLE(0.01)"; "NPMLE(0.1)"]
         )
 
     else
@@ -86,7 +89,7 @@ function sanitize_data(method_res; keep_npmle_variants = false)
     return summary_tbl
 end
 
-_default_colors = [colorant"#4C413F" colorant"#278B9A" colorant"#E75B64" colorant"#D8AF39" colorant"#E8C4A2"]
+_default_colors = [colorant"#4C413F" colorant"#278B9A" colorant"#E75B64" colorant"#D8AF39" colorant"#E8C4A2"];
 
 function plot_groupedbar(summary_tbl::DataFrame,  
     variance_setting::Symbol,
@@ -276,14 +279,14 @@ summary_tbl_npmle = filter(row->row.signal_setting == :conjugate, summary_tbl_np
 
 summary_tbl_npmle_FDR = unstack(summary_tbl_npmle, 
     [:signal_setting, :variance_setting, :ν, :ordering],
-    :cleaned_method_names,
+    :method_name,
     :FDP_mean,
-    renamecols=x->Symbol(:FDR, :_, x))
+    renamecols=x->"FDR_$(x)")
 
 
 maximum(abs.(summary_tbl_npmle_FDR.FDR_t_npmle_BH .- summary_tbl_npmle_FDR.FDR_t_npmle_BH_0))
-maximum(abs.(summary_tbl_npmle_FDR.FDR_t_npmle_BH .- summary_tbl_npmle_FDR.FDR_t_npmle_BH_02))
-maximum(abs.(summary_tbl_npmle_FDR.FDR_t_npmle_BH_0 .- summary_tbl_npmle_FDR.FDR_t_npmle_BH_02))
+maximum(abs.(summary_tbl_npmle_FDR.FDR_t_npmle_BH .- summary_tbl_npmle_FDR.FDR_t_npmle_BH_01))
+maximum(abs.(summary_tbl_npmle_FDR.FDR_t_npmle_BH_0 .- summary_tbl_npmle_FDR.FDR_t_npmle_BH_01))
 
 
 
@@ -293,14 +296,15 @@ summary_tbl_npmle_power = unstack(summary_tbl_npmle,
     :Power_mean,
     renamecols=x->"Power_$(x)")
 
-summary_tbl_npmle_power.power_diff = max.( abs.(summary_tbl_npmle_power.Power_t_npmle_BH .- summary_tbl_npmle_power.Power_t_npmle_BH_02),
+summary_tbl_npmle_power.power_diff = max.( abs.(summary_tbl_npmle_power.Power_t_npmle_BH .- summary_tbl_npmle_power.Power_t_npmle_BH_01),
                                            abs.(summary_tbl_npmle_power.Power_t_npmle_BH .- summary_tbl_npmle_power.Power_t_npmle_BH_0))
 
 maximum(abs.(summary_tbl_npmle_power.Power_t_npmle_BH .- summary_tbl_npmle_power.Power_t_npmle_BH_0))
-maximum(abs.(summary_tbl_npmle_power.Power_t_npmle_BH .- summary_tbl_npmle_power.Power_t_npmle_BH_02))
-maximum(abs.(summary_tbl_npmle_power.Power_t_npmle_BH_0 .- summary_tbl_npmle_power.Power_t_npmle_BH_02))
+maximum(abs.(summary_tbl_npmle_power.Power_t_npmle_BH .- summary_tbl_npmle_power.Power_t_npmle_BH_01))
+maximum(abs.(summary_tbl_npmle_power.Power_t_npmle_BH_0 .- summary_tbl_npmle_power.Power_t_npmle_BH_01))
 
-CSV.write("summary_tbl_npmle_power.csv", sort(summary_tbl_npmle_power, order(:power_diff, rev=true))[1:4,:])
+sorted_summary_tbl_npmle_power =  sort(summary_tbl_npmle_power, order(:power_diff, rev=true))
+CSV.write("summary_tbl_npmle_power.csv", sorted_summary_tbl_npmle_power[1:2,:])
 
 summary_tbl_npmle_cond = unstack(summary_tbl_npmle, 
     [:signal_setting, :variance_setting, :ν, :ordering],
@@ -337,7 +341,3 @@ adversarial_sensitivity_plot = plot(
 
 savefig(adversarial_sensitivity_plot, "adversarial_sensitivity_plot_conditionality.pdf")
 
-
-maximum(abs.(summary_tbl_npmle_cond.Cond_t_npmle_BH .- summary_tbl_npmle_cond.Cond_t_npmle_BH_0))
-maximum(abs.(summary_tbl_npmle_power.Power_t_npmle_BH .- summary_tbl_npmle_power.Power_t_npmle_BH_02))
-maximum(abs.(summary_tbl_npmle_power.Power_t_npmle_BH_0 .- summary_tbl_npmle_power.Power_t_npmle_BH_02))
