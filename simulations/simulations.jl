@@ -19,7 +19,7 @@ using ProgressMeter
 
 # Monte Carlo replicates
 nreps = 3_000
-nreps_sensi = 1_000
+nreps_sensi = 3_000
 
 Random.seed!(1)
 
