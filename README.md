@@ -1,8 +1,8 @@
 # empirical-partially-bayes-paper
 
-Reproduction code for the working paper:
+Reproduction code for the paper:
 
-> **Empirical partially Bayes multiple testing and compound χ² decisions.** Nikolaos Ignatiadis and Bodhisattva Sen, 2023
+> **Empirical partially Bayes multiple testing and compound χ² decisions.** Nikolaos Ignatiadis and Bodhisattva Sen, 2024, Annals of Statistics (forthcoming)
 
 The repository structure is as follows:
 
